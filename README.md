@@ -1,0 +1,1 @@
+A small parser of sinoptic.ua with possibility of saving data in csv-file and sending a mail.
