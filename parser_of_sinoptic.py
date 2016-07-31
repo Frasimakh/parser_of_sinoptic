@@ -1,17 +1,25 @@
 # -*- encoding: utf-8 -*-
 
-import csv
-import smtplib
+"""A small parser of sinoptik.ua with possibility of sending a mail."""
+import argparse
 import datetime
+import smtplib
 from urllib.request import urlopen
+from urllib.parse import quote
 
 from bs4 import BeautifulSoup
 
-BASE_URL = 'https://sinoptik.ua/%D0%BF%D0%BE%D0%B3%D0%BE%D0%B4%D0%B0-%D1%80%D0%BE%D0%B2%D0%BD%D0%BE'
-SMTP_SERVER_NAME = "smtp.gmail.com"
-SENDER_EMAIL = "your_email@gmail.com"
-SENDER_PASSWORD = "********"
-RECEIVER_EMAIL = "receiver_email@gmail.com"
+
+def parsing_of_atguments():
+    """Parsing of arguments in command line"""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("city", help="The city name in which you want to know the weather. Example: ровно", type=str)
+    parser.add_argument("sender_email", help="Your email. Example: your_email@gmail.com", type=str)
+    parser.add_argument("sender_password", help="Your password. Example: 12qr8789", type=str)
+    parser.add_argument("receiver_email", help="Receiver email. Example: receiver_email@gmail.com", type=str)
+    parser.add_argument("-sn", dest="smtp_server_name", help="Your SMTP server name. Example: smtp.gmail.com", type=str,
+                        default="smtp.gmail.com")
+    return parser
 
 
 def get_html(url):
@@ -21,41 +29,25 @@ def get_html(url):
 
 
 def parse(html):
-    """Parsing of data"""
+    """Parsing of data and creating a dictionary of necessary information"""
     soup = BeautifulSoup(html, "html.parser")
     table = soup.find('table', class_='weatherDetails')
     rows = table.find_all('tr')
-    new_rows = []
-    new_rows.append(rows[1])
-    new_rows.append(rows[3])
-    new_rows.append(rows[8])
-    cols = []
-    for row in new_rows:
-        cols.append(row.find_all('td'))
+    new_rows = [rows[1], rows[3], rows[8]]
+    cols = [row.find_all('td') for row in new_rows]
     data = []
     for i in range(8):
         data.append({
             'time': cols[0][i].get_text(),
             'temperature': str(cols[1][i].get_text()).rstrip('\xb0'),
-            'chance of precipitation': cols[2][i].get_text()})
+            'chance of precipitation': cols[2][i].get_text()
+        })
     return data
 
 
-def save(projects, path):
-    """Save the data of weather in csv-file"""
-    with open(path, 'w') as csvfile:
-        text_writer = csv.writer(csvfile, delimiter=';')
-
-        text_writer.writerow(('Time', 'Temperature', 'Chance of precipitation'))
-        text_writer.writerows(
-            (project['time'], ''.join(project['temperature']), project['chance of precipitation']) for project
-            in projects
-        )
-        csvfile.close()
-
-
 def formatting_data_for_mail(data):
-    """Formatting data special for mail"""
+    """Beautiful formatting data special for mail (making of multi-line string from a dictionary)"""
+    now = datetime.datetime.now()
     data_for_sending = '\nWeather in Rivne on {}:\n\n'.format(now.strftime("%d.%m.%Y"))
     for element in data:
         for key, value in element.items():
@@ -65,17 +57,18 @@ def formatting_data_for_mail(data):
 
 
 def send_to_email(data_for_sending):
-    """Send a mail with data to recipient"""
-    server = smtplib.SMTP(SMTP_SERVER_NAME, 587)
+    """Send a mail with information of weather to recipient"""
+    server = smtplib.SMTP(args.smtp_server_name, 587)
     server.starttls()
-    server.login(SENDER_EMAIL, SENDER_PASSWORD)
-    server.sendmail(SENDER_EMAIL, RECEIVER_EMAIL, data_for_sending)
+    server.login(args.sender_email, args.sender_password)
+    server.sendmail(args.sender_email, args.receiver_email, data_for_sending)
+    print("Message successfully sent")
     server.close()
 
 
 if __name__ == '__main__':
-    now = datetime.datetime.now()
-    data = parse(get_html(BASE_URL))
-    save(data, 'data.csv')
+    args = parsing_of_atguments().parse_args()
+    base_url = 'https://sinoptik.ua{}'.format(quote('/погода-' + args.city))
+    data = parse(get_html(base_url))
     data_for_sending = formatting_data_for_mail(data)
     send_to_email(data_for_sending)
